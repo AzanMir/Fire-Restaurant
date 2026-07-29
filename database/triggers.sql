@@ -31,6 +31,10 @@ CREATE OR REPLACE TRIGGER trg_menu_items_updated_at
   BEFORE UPDATE ON menu_items
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE OR REPLACE TRIGGER trg_menu_item_variants_updated_at
+  BEFORE UPDATE ON menu_item_variants
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE OR REPLACE TRIGGER trg_recipes_updated_at
   BEFORE UPDATE ON recipes
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -1,7 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { generateReceiptNumber } from "@/lib/utils";
 import { validateOrderStock } from "@/lib/order-stock";
-import { getPaymentDetailsNote } from "@/lib/payment";
 
 export async function getOrders({ status, search, page = 1, limit = 20 } = {}) {
   let query = supabase
@@ -31,52 +29,14 @@ export async function getOrder(id) {
 }
 
 export async function createOrder({ customerName, phone, paymentMethod, paymentDetails, items, subtotal, discount, tax, total, notes, servedBy }) {
-  await validateOrderStock(supabase, items);
-  const paymentNote = getPaymentDetailsNote(paymentMethod, paymentDetails);
-
-  const receiptNumber = generateReceiptNumber();
-
-  const { data: order, error: oErr } = await supabase
-    .from("orders")
-    .insert({
-      receipt_number: receiptNumber,
-      customer_name: customerName || "Walk-in",
-      phone: phone || "",
-      payment_method: paymentMethod,
-      subtotal,
-      discount,
-      tax,
-      total,
-      notes: [notes, paymentNote].filter(Boolean).join("\n"),
-      served_by: servedBy || null,
-      status: "Pending",
-    })
-    .select()
-    .single();
-
-  if (oErr) throw oErr;
-
-  const orderItems = items.map((i) => ({
-    order_id: order.id,
-    menu_item_id: i.id,
-    name: i.name,
-    price: i.price,
-    quantity: i.quantity,
-    subtotal: i.price * i.quantity,
-  }));
-
-  const { error: iErr } = await supabase.from("order_items").insert(orderItems);
-  if (iErr) throw iErr;
-
-  const { error: stockError } = await supabase.rpc("deduct_inventory_for_order", {
-    p_order_id: order.id,
+  const response = await fetch("/api/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ customerName, phone, paymentMethod, paymentDetails, items, discount, notes }),
   });
-  if (stockError) {
-    await supabase.from("orders").update({ status: "Cancelled" }).eq("id", order.id);
-    throw new Error(`Order could not be placed because inventory could not be deducted: ${stockError.message}`);
-  }
-
-  return order;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Unable to place order.");
+  return data;
 }
 
 export async function updateOrderStatus(id, status) {

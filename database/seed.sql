@@ -6,7 +6,7 @@
 
 -- Settings (single row)
 INSERT INTO settings (restaurant_name, address, phone, email, currency, tax_percentage, opening_time, closing_time)
-VALUES ('FIRE Restaurant', '123 Main Street, Karachi', '+92-300-1234567', 'info@firerestaurant.com', 'Rs.', 5.00, '09:00', '23:00')
+VALUES ('FIRE Restaurant', '123 Main Street, Karachi', '+92-300-1234567', 'info@firerestaurant.com', 'Rs.', 0.00, '09:00', '23:00')
 ON CONFLICT DO NOTHING;
 
 -- Categories
@@ -54,6 +54,26 @@ INSERT INTO menu_items (name, description, price, is_available, is_active) VALUE
   ('Beef Smash Burger',      'Double smash patty with cheese and ketchup',   550.00, TRUE, TRUE),
   ('Zinger Burger',          'Spicy zinger chicken with special sauce',       420.00, TRUE, TRUE)
 ON CONFLICT DO NOTHING;
+
+-- One pizza dish with selectable sizes. The parent row owns its recipe; sizes
+-- only control price and are recorded on the order item.
+INSERT INTO menu_items (name, description, category_id, price, is_available, is_active)
+SELECT 'Achari Pizza', 'Spicy achari chicken pizza with mozzarella', categories.id, 0.00, TRUE, TRUE
+FROM categories
+WHERE categories.name = 'Pizza'
+  AND NOT EXISTS (SELECT 1 FROM menu_items WHERE name = 'Achari Pizza');
+
+INSERT INTO menu_item_variants (menu_item_id, name, price, sort_order)
+SELECT id, size_name, size_price, sort_order
+FROM menu_items
+CROSS JOIN (VALUES
+  ('Small', 650.00, 1),
+  ('Medium', 950.00, 2),
+  ('Large', 1250.00, 3),
+  ('Extra Large', 1550.00, 4)
+) AS sizes(size_name, size_price, sort_order)
+WHERE menu_items.name = 'Achari Pizza'
+ON CONFLICT (menu_item_id, name) DO NOTHING;
 
 -- Menu Items (Beverages)
 INSERT INTO menu_items (name, description, price, is_available, is_active) VALUES

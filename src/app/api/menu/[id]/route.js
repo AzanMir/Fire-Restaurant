@@ -9,7 +9,15 @@ export async function GET(_, { params }) {
     .eq("id", params.id)
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
-  return NextResponse.json(data);
+  let variants = [];
+  try {
+    const result = await supabase.from("menu_item_variants").select("id,name,price,is_available,sort_order").eq("menu_item_id", data.id);
+    if (result.error) throw result.error;
+    variants = result.data || [];
+  } catch {
+    // See the menu route: variants are optional until its migration is deployed.
+  }
+  return NextResponse.json({ ...data, variants });
 }
 
 export async function PUT(request, { params }) {

@@ -28,6 +28,7 @@ import { ORDER_STATUSES, PAYMENT_METHODS } from "@/lib/constants";
 import StatusBadge from "@/components/common/StatusBadge";
 import EmptyState from "@/components/common/EmptyState";
 import Loader from "@/components/common/Loader";
+import MenuItemCard from "@/components/orders/MenuItemCard";
 import useSettings from "@/hooks/useSettings";
 import { useReactToPrint } from "react-to-print";
 
@@ -63,7 +64,6 @@ function Receipt({ order, settings, ref: forwardedRef }) {
       <div className="space-y-1 text-xs">
         <div className="flex justify-between"><span>Subtotal</span><span>{formatCurrency(order.subtotal)}</span></div>
         {order.discount > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span>-{formatCurrency(order.discount)}</span></div>}
-        <div className="flex justify-between"><span>Tax ({settings?.tax_percentage ?? 5}%)</span><span>{formatCurrency(order.tax)}</span></div>
         <div className="flex justify-between font-bold text-sm"><span>TOTAL</span><span>{formatCurrency(order.total)}</span></div>
       </div>
       <Separator className="my-2" />
@@ -94,11 +94,9 @@ function POSPanel({ categories, menuItems, onOrderPlaced }) {
 
   const handlePrint = useReactToPrint({ contentRef: receiptRef });
 
-  const taxRate = settings?.tax_percentage ?? 5;
   const discountAmt = Math.min(Number(discount) || 0, subtotal);
   const afterDiscount = subtotal - discountAmt;
-  const taxAmt = (afterDiscount * taxRate) / 100;
-  const total = afterDiscount + taxAmt;
+  const total = afterDiscount;
 
   const filtered = useMemo(() => {
     let list = menuItems.filter((i) => i.is_available);
@@ -117,7 +115,7 @@ function POSPanel({ categories, menuItems, onOrderPlaced }) {
         items: cartItems,
         subtotal,
         discount: discountAmt,
-        tax: taxAmt,
+        tax: 0,
         total,
         servedBy: user?.id,
       });
@@ -191,23 +189,7 @@ function POSPanel({ categories, menuItems, onOrderPlaced }) {
             <EmptyState title="No items found" />
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 pb-2">
-              {filtered.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => addItem(item)}
-                  className="flex flex-col items-start rounded-2xl border bg-card p-3 text-left hover:border-orange-300 hover:bg-orange-50 transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                >
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={item.name} className="w-full h-24 object-cover rounded-xl mb-2" />
-                  ) : (
-                    <div className="flex w-full h-24 items-center justify-center rounded-xl bg-muted mb-2">
-                      <span className="text-2xl">🍽️</span>
-                    </div>
-                  )}
-                  <p className="text-sm font-semibold line-clamp-2 leading-tight">{item.name}</p>
-                  <p className="text-orange-600 font-bold text-sm mt-1">{formatCurrency(item.price)}</p>
-                </button>
-              ))}
+              {filtered.map((item) => <MenuItemCard key={item.id} item={item} onAdd={addItem} />)}
             </div>
           )}
         </ScrollArea>
@@ -267,7 +249,6 @@ function POSPanel({ categories, menuItems, onOrderPlaced }) {
           <div className="space-y-1 text-xs">
             <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
             {discountAmt > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span>-{formatCurrency(discountAmt)}</span></div>}
-            <div className="flex justify-between text-muted-foreground"><span>Tax ({taxRate}%)</span><span>{formatCurrency(taxAmt)}</span></div>
             <div className="flex justify-between font-bold text-sm pt-1 border-t"><span>Total</span><span className="text-orange-600">{formatCurrency(total)}</span></div>
           </div>
 

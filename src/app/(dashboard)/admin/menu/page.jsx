@@ -23,7 +23,7 @@ import ImageUpload from "@/components/common/ImageUpload";
 import useMenu from "@/hooks/useMenu";
 import useCategories from "@/hooks/useCategories";
 import useInventory from "@/hooks/useInventory";
-import { createMenuItem, updateMenuItem, deleteMenuItem, upsertRecipe } from "@/services/menuService";
+import { createMenuItem, updateMenuItem, deleteMenuItem, upsertRecipe, replaceMenuItemVariants } from "@/services/menuService";
 import { uploadImage } from "@/services/uploadService";
 import { formatCurrency } from "@/lib/utils";
 import { STORAGE_BUCKETS, ITEMS_PER_PAGE, UNITS } from "@/lib/constants";
@@ -48,6 +48,7 @@ export default function MenuPage() {
   const [imageFile, setImageFile] = useState(null);
   const [recipeItems, setRecipeItems] = useState([]);
   const [recipeNotes, setRecipeNotes] = useState("");
+  const [variants, setVariants] = useState([]);
 
   const filtered = useMemo(() => {
     let list = items;
@@ -65,6 +66,7 @@ export default function MenuPage() {
     setImageFile(null);
     setRecipeItems([]);
     setRecipeNotes("");
+    setVariants([]);
     setDialogOpen(true);
   }
 
@@ -89,7 +91,12 @@ export default function MenuPage() {
         _name: ri.ingredient?.name || "",
       }))
     );
+    setVariants((full.variants || []).sort((a, b) => a.sort_order - b.sort_order));
     setDialogOpen(true);
+  }
+
+  function updateVariant(index, field, value) {
+    setVariants((current) => current.map((variant, i) => i === index ? { ...variant, [field]: value } : variant));
   }
 
   function addRecipeRow() {
@@ -116,8 +123,9 @@ export default function MenuPage() {
   }
 
   async function handleSave() {
-    if (!form.name.trim() || !form.price) {
-      toast({ title: "Validation error", description: "Name and price are required.", type: "error" });
+    const validVariants = variants.filter((variant) => variant.name.trim() && variant.price !== "" && Number(variant.price) >= 0);
+    if (!form.name.trim() || (!form.price && validVariants.length === 0) || validVariants.length !== variants.length) {
+      toast({ title: "Validation error", description: "Enter a name and price, and complete every size option.", type: "error" });
       return;
     }
     setSaving(true);
@@ -127,16 +135,17 @@ export default function MenuPage() {
 
       let savedItem;
       if (editId) {
-        savedItem = await updateMenuItem(editId, { ...form, image_url, price: Number(form.price) });
+        savedItem = await updateMenuItem(editId, { ...form, image_url, price: validVariants.length ? Math.min(...validVariants.map((variant) => Number(variant.price))) : Number(form.price) });
         toast({ title: "Menu item updated", type: "success" });
       } else {
-        savedItem = await createMenuItem({ ...form, image_url, price: Number(form.price) });
+        savedItem = await createMenuItem({ ...form, image_url, price: validVariants.length ? Math.min(...validVariants.map((variant) => Number(variant.price))) : Number(form.price) });
         toast({ title: "Menu item created", type: "success" });
       }
 
       // Save recipe
       const validRecipe = recipeItems.filter((r) => r.ingredient_id && r.quantity);
       await upsertRecipe(savedItem.id, recipeNotes, validRecipe);
+      await replaceMenuItemVariants(savedItem.id, validVariants);
 
       setDialogOpen(false);
       refresh();
@@ -223,7 +232,9 @@ export default function MenuPage() {
                     <TableCell>
                       <Badge variant="outline">{item.category?.name || "—"}</Badge>
                     </TableCell>
-                    <TableCell className="font-semibold">{formatCurrency(item.price)}</TableCell>
+                    <TableCell className="font-semibold">
+                      {(item.variants || []).length ? `From ${formatCurrency(Math.min(...item.variants.map((variant) => Number(variant.price))))}` : formatCurrency(item.price)}
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={item.is_available ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}>
                         {item.is_available ? "Yes" : "No"}
@@ -259,6 +270,7 @@ export default function MenuPage() {
           <Tabs defaultValue="details">
             <TabsList>
               <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="sizes">Sizes</TabsTrigger>
               <TabsTrigger value="recipe"><ChefHat className="size-3 mr-1" />Recipe</TabsTrigger>
             </TabsList>
 
@@ -270,7 +282,7 @@ export default function MenuPage() {
                   <Input placeholder="e.g. Chicken Burger" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Price *</Label>
+                  <Label>Base price {variants.length ? "(used only when no sizes)" : "*"}</Label>
                   <Input type="number" placeholder="0.00" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
@@ -292,6 +304,24 @@ export default function MenuPage() {
                   <Label htmlFor="menu-avail">Available for ordering</Label>
                 </div>
               </div>
+            </TabsContent>
+
+            <TabsContent value="sizes" className="space-y-4 mt-4">
+              <p className="text-sm text-muted-foreground">Add sizes only when this is one dish with price options. Customers must select one before adding it to the cart.</p>
+              <div className="space-y-2">
+                {variants.map((variant, index) => (
+                  <div key={variant.id || index} className="flex items-center gap-2">
+                    <Input className="flex-1" placeholder="e.g. Large" value={variant.name} onChange={(event) => updateVariant(index, "name", event.target.value)} />
+                    <Input className="w-28" type="number" min="0" placeholder="Price" value={variant.price} onChange={(event) => updateVariant(index, "price", event.target.value)} />
+                    <Button variant="ghost" size="icon-sm" onClick={() => setVariants((current) => current.filter((_, i) => i !== index))}>
+                      <X className="size-4 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setVariants((current) => [...current, { name: "", price: "", is_available: true }])}>
+                <Plus className="size-4 mr-1" /> Add Size
+              </Button>
             </TabsContent>
 
             <TabsContent value="recipe" className="space-y-4 mt-4">

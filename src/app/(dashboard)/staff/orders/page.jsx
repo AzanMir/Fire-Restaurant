@@ -28,6 +28,7 @@ import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { ORDER_STATUSES, PAYMENT_METHODS } from "@/lib/constants";
 import EmptyState from "@/components/common/EmptyState";
 import Loader from "@/components/common/Loader";
+import MenuItemCard from "@/components/orders/MenuItemCard";
 import { useReactToPrint } from "react-to-print";
 
 function Receipt({ order, settings, ref: fwdRef }) {
@@ -58,7 +59,6 @@ function Receipt({ order, settings, ref: fwdRef }) {
       <div className="space-y-0.5 text-xs">
         <div className="flex justify-between"><span>Subtotal</span><span>{formatCurrency(order.subtotal)}</span></div>
         {Number(order.discount) > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span>-{formatCurrency(order.discount)}</span></div>}
-        <div className="flex justify-between"><span>Tax</span><span>{formatCurrency(order.tax)}</span></div>
         <div className="flex justify-between font-bold text-sm mt-1 pt-1 border-t"><span>TOTAL</span><span>{formatCurrency(order.total)}</span></div>
       </div>
       <p className="text-center text-xs text-muted-foreground mt-3">Thank you!</p>
@@ -89,10 +89,8 @@ function POSInner({ categories, menuItems, onDone }) {
   const receiptRef = useRef(null);
   const handlePrint = useReactToPrint({ contentRef: receiptRef });
 
-  const taxRate = settings?.tax_percentage ?? 5;
   const discountAmt = Math.min(Number(discount) || 0, subtotal);
-  const taxAmt = ((subtotal - discountAmt) * taxRate) / 100;
-  const total = subtotal - discountAmt + taxAmt;
+  const total = subtotal - discountAmt;
 
   const filtered = useMemo(() => {
     let list = menuItems.filter((i) => i.is_available);
@@ -108,7 +106,7 @@ function POSInner({ categories, menuItems, onDone }) {
       const order = await createOrder({
         customerName, phone, paymentMethod,
         paymentDetails: { provider: paymentProvider, reference: paymentReference },
-        items: cart, subtotal, discount: discountAmt, tax: taxAmt, total, servedBy: user?.id,
+        items: cart, subtotal, discount: discountAmt, tax: 0, total, servedBy: user?.id,
       });
       const fullOrder = { ...order, order_items: cart.map((i) => ({ name: i.name, quantity: i.quantity, subtotal: i.price * i.quantity })) };
       setReceiptOrder(fullOrder);
@@ -174,20 +172,7 @@ function POSInner({ categories, menuItems, onDone }) {
         <ScrollArea className="flex-1">
           {filtered.length === 0 ? <EmptyState title="No items" className="py-10" /> : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pb-2">
-              {filtered.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => addItem(item)}
-                  className="flex flex-col items-start rounded-2xl border bg-card p-3 text-left hover:border-orange-300 hover:bg-orange-50 transition active:scale-95 focus:outline-none focus:ring-2 focus:ring-orange-400"
-                >
-                  {item.image_url
-                    ? <img src={item.image_url} alt={item.name} className="w-full h-24 object-cover rounded-xl mb-2" />
-                    : <div className="flex w-full h-24 items-center justify-center rounded-xl bg-muted mb-2 text-2xl">🍽️</div>
-                  }
-                  <p className="text-xs font-semibold line-clamp-2">{item.name}</p>
-                  <p className="text-orange-600 font-bold text-sm mt-0.5">{formatCurrency(item.price)}</p>
-                </button>
-              ))}
+              {filtered.map((item) => <MenuItemCard key={item.id} item={item} onAdd={addItem} compact />)}
             </div>
           )}
         </ScrollArea>
@@ -250,7 +235,6 @@ function POSInner({ categories, menuItems, onDone }) {
           <div className="space-y-0.5 text-xs">
             <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
             {discountAmt > 0 && <div className="flex justify-between text-red-500"><span>Discount</span><span>-{formatCurrency(discountAmt)}</span></div>}
-            <div className="flex justify-between text-muted-foreground"><span>Tax ({taxRate}%)</span><span>{formatCurrency(taxAmt)}</span></div>
             <div className="flex justify-between font-bold text-sm pt-1 border-t"><span>Total</span><span className="text-orange-600">{formatCurrency(total)}</span></div>
           </div>
 

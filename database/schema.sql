@@ -115,6 +115,20 @@ CREATE TABLE IF NOT EXISTS menu_items (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Purchasable options for a single dish (for example, Small / Medium / Large).
+-- A dish without rows here is sold at menu_items.price as before.
+CREATE TABLE IF NOT EXISTS menu_item_variants (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  menu_item_id UUID NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  price NUMERIC(10,2) NOT NULL DEFAULT 0,
+  is_available BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(menu_item_id, name)
+);
+
 -- ============================================================
 -- RECIPES
 -- ============================================================
@@ -168,6 +182,7 @@ CREATE TABLE IF NOT EXISTS order_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   menu_item_id UUID NOT NULL REFERENCES menu_items(id) ON DELETE RESTRICT,
+  menu_item_variant_id UUID REFERENCES menu_item_variants(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   price NUMERIC(10,2) NOT NULL DEFAULT 0,
   quantity INTEGER NOT NULL DEFAULT 1,
@@ -175,6 +190,10 @@ CREATE TABLE IF NOT EXISTS order_items (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Safe for databases created before size options were introduced.
+ALTER TABLE order_items
+  ADD COLUMN IF NOT EXISTS menu_item_variant_id UUID REFERENCES menu_item_variants(id) ON DELETE SET NULL;
 
 -- ============================================================
 -- SALES
@@ -232,5 +251,6 @@ CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(date);
 CREATE INDEX IF NOT EXISTS idx_inventory_ingredient_id ON inventory(ingredient_id);
 CREATE INDEX IF NOT EXISTS idx_ingredients_supplier_id ON ingredients(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_menu_items_category_id ON menu_items(category_id);
+CREATE INDEX IF NOT EXISTS idx_menu_item_variants_menu_item_id ON menu_item_variants(menu_item_id);
 CREATE INDEX IF NOT EXISTS idx_recipe_items_recipe_id ON recipe_items(recipe_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON profiles(role);

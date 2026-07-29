@@ -32,11 +32,69 @@ export async function POST(request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { items, customerName, phone, paymentMethod, paymentDetails, subtotal, discount, tax, total, notes } = body;
+  const { items, customerName, phone, paymentMethod, paymentDetails, discount, notes } = body;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return NextResponse.json({ error: "Add at least one item before placing an order." }, { status: 400 });
+  }
+
+  const menuItemIds = [...new Set(items.map((item) => item.menu_item_id || item.id))];
+  const { data: menuItems, error: menuError } = await supabase
+    .from("menu_items")
+    .select("id,name,price,is_available")
+    .in("id", menuItemIds)
+    .eq("is_active", true);
+  if (menuError) return NextResponse.json({ error: menuError.message }, { status: 500 });
+
+  let variants = [];
+  try {
+    const result = await supabase
+      .from("menu_item_variants")
+      .select("id,menu_item_id,name,price,is_available")
+      .in("menu_item_id", menuItemIds);
+    if (result.error) throw result.error;
+    variants = result.data || [];
+  } catch {
+    // Older databases can continue selling normal menu items until the
+    // optional variants migration has been applied.
+  }
+  const variantsByMenuItem = new Map();
+  variants.forEach((variant) => variantsByMenuItem.set(variant.menu_item_id, [...(variantsByMenuItem.get(variant.menu_item_id) || []), variant]));
+
+  const menuById = new Map((menuItems || []).map((item) => [item.id, { ...item, variants: variantsByMenuItem.get(item.id) || [] }]));
+  let normalizedItems;
+  try {
+    normalizedItems = items.map((item) => {
+      const menuItem = menuById.get(item.menu_item_id || item.id);
+      const quantity = Number(item.quantity);
+      if (!menuItem || !menuItem.is_available || !Number.isInteger(quantity) || quantity <= 0) {
+        throw new Error("One or more menu items are unavailable or have an invalid quantity.");
+      }
+      const variants = (menuItem.variants || []).filter((variant) => variant.is_available);
+      const variant = item.variant_id ? variants.find((candidate) => candidate.id === item.variant_id) : null;
+      if ((variants.length && !variant) || (!variants.length && item.variant_id)) {
+        throw new Error(`${menuItem.name} requires a valid size selection.`);
+      }
+      return {
+        id: menuItem.id,
+        menu_item_id: menuItem.id,
+        variant_id: variant?.id || null,
+        name: variant ? `${menuItem.name} (${variant.name})` : menuItem.name,
+        price: Number(variant?.price ?? menuItem.price),
+        quantity,
+      };
+    });
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  const subtotal = normalizedItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const appliedDiscount = Math.min(Math.max(Number(discount) || 0, 0), subtotal);
+  const total = subtotal - appliedDiscount;
 
   let paymentNote;
   try {
-    await validateOrderStock(supabase, items);
+    await validateOrderStock(supabase, normalizedItems);
     paymentNote = getPaymentDetailsNote(paymentMethod, paymentDetails);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 409 });
@@ -51,7 +109,7 @@ export async function POST(request) {
       customer_name: customerName || "Walk-in",
       phone: phone || "",
       payment_method: paymentMethod,
-      subtotal, discount, tax, total,
+      subtotal, discount: appliedDiscount, tax: 0, total,
       notes: [notes, paymentNote].filter(Boolean).join("\n"),
       served_by: user.id,
       status: "Pending",
@@ -61,9 +119,10 @@ export async function POST(request) {
 
   if (oErr) return NextResponse.json({ error: oErr.message }, { status: 400 });
 
-  const orderItems = items.map((i) => ({
+  const orderItems = normalizedItems.map((i) => ({
     order_id: order.id,
     menu_item_id: i.id,
+    menu_item_variant_id: i.variant_id,
     name: i.name,
     price: i.price,
     quantity: i.quantity,

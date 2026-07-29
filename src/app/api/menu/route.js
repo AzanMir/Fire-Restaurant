@@ -21,7 +21,20 @@ export async function GET(request) {
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  let variants = [];
+  try {
+    const result = await supabase
+      .from("menu_item_variants")
+      .select("id,menu_item_id,name,price,is_available,sort_order")
+      .in("menu_item_id", (data || []).map((item) => item.id));
+    if (result.error) throw result.error;
+    variants = result.data || [];
+  } catch {
+    // The menu remains usable on databases that have not run the variants migration yet.
+  }
+  const variantsByMenuItem = new Map();
+  variants.forEach((variant) => variantsByMenuItem.set(variant.menu_item_id, [...(variantsByMenuItem.get(variant.menu_item_id) || []), variant]));
+  return NextResponse.json((data || []).map((item) => ({ ...item, variants: variantsByMenuItem.get(item.id) || [] })));
 }
 
 export async function POST(request) {

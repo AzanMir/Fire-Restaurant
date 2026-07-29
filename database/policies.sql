@@ -10,6 +10,7 @@ ALTER TABLE suppliers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ingredients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE menu_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE menu_item_variants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recipes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recipe_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
@@ -97,6 +98,15 @@ CREATE POLICY "menu_items_select_all" ON menu_items
   FOR SELECT USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "menu_items_write_admin" ON menu_items
+  FOR ALL USING (get_user_role() = 'admin');
+
+-- ============================================================
+-- MENU ITEM VARIANTS
+-- ============================================================
+CREATE POLICY "menu_item_variants_select_all" ON menu_item_variants
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+CREATE POLICY "menu_item_variants_write_admin" ON menu_item_variants
   FOR ALL USING (get_user_role() = 'admin');
 
 -- ============================================================

@@ -10,7 +10,7 @@ export function CartProvider({ children }) {
 
   const addItem = useCallback((menuItem) => {
     setItems((prev) => {
-      const existing = prev.find((i) => i.id === menuItem.id);
+      const existing = prev.find((i) => i.id === menuItem.id && i.variant_id === menuItem.variant_id);
       if (existing) {
         return prev.map((i) =>
           i.id === menuItem.id ? { ...i, quantity: i.quantity + 1 } : i
